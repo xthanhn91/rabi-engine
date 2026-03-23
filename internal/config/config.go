@@ -52,6 +52,8 @@ type Config struct {
 	Cron      CronConfig      `json:"cron"`
 	Telemetry TelemetryConfig `json:"telemetry"`
 	Tailscale TailscaleConfig `json:"tailscale"`
+	Roles     RolesConfig     `json:"roles"`     // Rabi: multi-role engine (types in rabi_config.go)
+	Facebook  FacebookConfig  `json:"facebook"`  // Rabi: Facebook sidecar (types in rabi_config.go)
 	Bindings  []AgentBinding  `json:"bindings,omitempty"`
 	mu        sync.RWMutex
 }
@@ -123,8 +125,9 @@ type AgentDefaults struct {
 	Compaction          *CompactionConfig     `json:"compaction,omitempty"`
 	ContextPruning      *ContextPruningConfig `json:"contextPruning,omitempty"`
 	// Bootstrap context truncation limits (matching TS bootstrapMaxChars / bootstrapTotalMaxChars)
-	BootstrapMaxChars      int `json:"bootstrapMaxChars,omitempty"`      // per-file max before truncation (default 20000)
-	BootstrapTotalMaxChars int `json:"bootstrapTotalMaxChars,omitempty"` // total budget across all files (default 24000)
+	BootstrapMaxChars      int            `json:"bootstrapMaxChars,omitempty"`      // per-file max before truncation (default 20000)
+	BootstrapTotalMaxChars int            `json:"bootstrapTotalMaxChars,omitempty"` // total budget across all files (default 24000)
+	Hooks                  []LoopHookDef  `json:"hooks,omitempty"`                  // Rabi: agent loop hooks (type in rabi_config.go)
 }
 
 // CompactionConfig configures session compaction behaviour.

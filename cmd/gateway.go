@@ -1013,6 +1013,10 @@ func runGateway() {
 	// Compiled via build tags: `go build -tags tsnet` to enable.
 	mux := server.BuildMux()
 
+	// Rabi-specific modules: CTO tools, Facebook, hooks, roles, metrics endpoints.
+	rabiClean := initRabiModules(ctx, cfg, toolsReg, workspace, mux, Version)
+	defer rabiClean.Stop()
+
 	// Mount channel webhook handlers on the main mux (e.g. Feishu /feishu/events).
 	// This allows webhook-based channels to share the main server port.
 	for _, route := range channelMgr.WebhookHandlers() {
