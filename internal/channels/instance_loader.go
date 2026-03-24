@@ -240,6 +240,11 @@ func (l *InstanceLoader) loadInstance(ctx context.Context, inst store.ChannelIns
 	if base, ok := ch.(interface{ SetTenantID(uuid.UUID) }); ok {
 		base.SetTenantID(inst.TenantID)
 	}
+	// Propagate tenant_id to pending history for compaction/sweep DB operations.
+	// Factory creates PendingHistory before SetTenantID is called, so tenantID is uuid.Nil at construction.
+	if ph, ok := ch.(interface{ SetPendingHistoryTenantID(uuid.UUID) }); ok {
+		ph.SetPendingHistoryTenantID(inst.TenantID)
+	}
 
 	// Wire pending message auto-compaction.
 	// Priority: config provider/model > agent's provider/model > fallback.
@@ -282,6 +287,16 @@ func (l *InstanceLoader) loadInstance(ctx context.Context, inst store.ChannelIns
 			pc.SetPendingCompaction(cc)
 			slog.Debug("pending compaction configured", "channel", inst.Name, "provider", p.Name(), "model", model,
 				"threshold", cc.Threshold, "keep_recent", cc.KeepRecent, "max_tokens", cc.MaxTokens)
+		} else {
+			attemptedProvider := ""
+			if l.pendingCompactCfg != nil {
+				attemptedProvider = l.pendingCompactCfg.Provider
+			}
+			if attemptedProvider == "" && ag != nil {
+				attemptedProvider = ag.Provider
+			}
+			slog.Warn("pending compaction not configured: provider/model unavailable",
+				"channel", inst.Name, "agent_id", inst.AgentID, "attempted_provider", attemptedProvider)
 		}
 	}
 	l.manager.RegisterChannel(inst.Name, ch)

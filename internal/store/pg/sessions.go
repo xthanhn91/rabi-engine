@@ -140,6 +140,12 @@ func (s *PGSessionStore) AddMessage(ctx context.Context, key string, msg provide
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Stamp message creation time if not already set.
+	if msg.CreatedAt == nil {
+		now := time.Now().UTC()
+		msg.CreatedAt = &now
+	}
+
 	data := s.getOrInit(ctx, key)
 	data.Messages = append(data.Messages, msg)
 	data.Updated = time.Now()

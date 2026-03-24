@@ -1,7 +1,8 @@
 export const ROUTES = {
   LOGIN: "/login",
   OVERVIEW: "/overview",
-  CHAT: "/chat/:sessionKey?",
+  CHAT: "/chat",
+  CHAT_PATTERN: "/chat/:sessionKey?",
   AGENTS: "/agents",
   AGENT_DETAIL: "/agents/:id",
   SESSIONS: "/sessions",
@@ -48,6 +49,7 @@ export const LOCAL_STORAGE_KEYS = {
   SENDER_ID: "goclaw:senderID",
   TENANT_ID: "goclaw:tenant_id",
   TENANT_HINT: "goclaw:tenant_hint",
+  SETUP_SKIPPED: "goclaw:setup_skipped",
   THEME: "goclaw:theme",
   SIDEBAR_COLLAPSED: "goclaw:sidebarCollapsed",
   LANGUAGE: "goclaw:language",

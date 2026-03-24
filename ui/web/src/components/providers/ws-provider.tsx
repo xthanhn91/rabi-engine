@@ -30,8 +30,13 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
       () => useAuthStore.getState().senderID,
       (state: ConnectionState) => {
         const store = useAuthStore.getState();
-        store.setConnected(state === "connected");
-        if (state === "connected" && wsRef.current) {
+        const isConnected = state === "connected";
+        if (isConnected && wsRef.current) {
+          store.setConnected(true, { version: wsRef.current.serverVersion });
+        } else {
+          store.setConnected(false);
+        }
+        if (isConnected && wsRef.current) {
           const client = wsRef.current;
           store.setRole(client.role || "");
           store.setTenant(client.tenantId, client.tenantName, client.tenantSlug, client.crossTenant);

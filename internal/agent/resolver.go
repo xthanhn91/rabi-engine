@@ -162,7 +162,7 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 						hasTeam = true
 						contextFiles = append(contextFiles, bootstrap.ContextFile{
 							Path:    bootstrap.TeamFile,
-							Content: buildTeamMD(team, members, ag.ID, tools.IsTeamV2(team)),
+							Content: buildTeamMD(team, members, ag.ID),
 						})
 						// Detect lead role for tool policy
 						for _, m := range members {

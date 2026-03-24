@@ -512,6 +512,7 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 	var deliverables []string      // actual content from tool outputs (for team task results)
 	var blockReplies int           // count of block.reply events emitted (for dedup in consumer)
 	var lastBlockReply string      // last block reply content
+	var checkpointFlushedMsgs int  // messages flushed mid-run for crash safety (#294)
 
 	// Mid-loop compaction: summarize in-memory messages when context exceeds threshold.
 	// Uses same config as maybeSummarize (contextWindow * historyShare).
@@ -724,6 +725,7 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 				providers.OptChannel:     req.Channel,
 				providers.OptChatID:      req.ChatID,
 				providers.OptPeerKind:    req.PeerKind,
+				providers.OptWorkspace:   tools.ToolWorkspaceFromCtx(ctx),
 			},
 		}
 		if l.thinkingLevel != "" && l.thinkingLevel != "off" {
@@ -1329,16 +1331,31 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 			pendingMsgs = append(pendingMsgs, forSession...)
 		}
 
+		// Periodic checkpoint: flush pending messages to session every 5 iterations
+		// to limit data loss on container crash (#294). Trade-off: partial visibility
+		// to concurrent reads vs full data loss on crash.
+		// AddMessage writes to in-memory cache; Save persists to DB. We must clear
+		// pendingMsgs after AddMessage to prevent double-add in the final flush.
+		const checkpointInterval = 5
+		if iteration > 0 && iteration%checkpointInterval == 0 && len(pendingMsgs) > 0 {
+			for _, msg := range pendingMsgs {
+				l.sessions.AddMessage(ctx, req.SessionKey, msg)
+			}
+			checkpointFlushedMsgs += len(pendingMsgs)
+			pendingMsgs = pendingMsgs[:0]
+			l.sessions.Save(ctx, req.SessionKey) //nolint:errcheck — best-effort persistence
+		}
+
 	}
 
-	// 4. Full sanitization pipeline (matching TS extractAssistantText + sanitizeUserFacingText)
+	// 5. Full sanitization pipeline (matching TS extractAssistantText + sanitizeUserFacingText)
 	finalContent = SanitizeAssistantContent(finalContent)
 
 	// 4b. Config leak detection — disabled: too many false positives
 	// (e.g. agent explaining public architecture mentioning SOUL.md etc.)
 	// finalContent = StripConfigLeak(finalContent, l.agentType)
 
-	// 5. Handle NO_REPLY: save to session for context but mark as silent.
+	// 6. Handle NO_REPLY: save to session for context but mark as silent.
 	// Matching TS: NO_REPLY is saved (via resolveSilentReplyFallbackText) but
 	// filtered at the payload level before delivery.
 	isSilent := IsSilentReply(finalContent)
@@ -1356,7 +1373,7 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 		finalContent += "\n\n---\n_" + i18n.T(locale, i18n.MsgSkillNudgePostscript) + "_"
 	}
 
-	// 6. Fallback for empty content
+	// 7. Fallback for empty content
 	if finalContent == "" {
 		if len(asyncToolCalls) > 0 {
 			finalContent = "..."
@@ -1450,7 +1467,7 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 	// Next time EstimateTokensWithCalibration() is called, it uses this as a base
 	// instead of the chars/3 heuristic (more accurate for multilingual content).
 	if totalUsage.PromptTokens > 0 {
-		msgCount := len(history) + len(pendingMsgs)
+		msgCount := len(history) + checkpointFlushedMsgs + len(pendingMsgs)
 		l.sessions.SetLastPromptTokens(ctx, req.SessionKey, totalUsage.PromptTokens, msgCount)
 	}
 
@@ -1476,14 +1493,16 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 		}
 	}
 
-	// If silent, return empty content so gateway suppresses delivery.
+	// 8. Metadata Stripping: Clean internal [[...]] tags for user-facing content
+	// (Session version is already saved in assistantMsg above)
+	finalContent = StripMessageDirectives(finalContent)
 	if isSilent {
 		slog.Info("agent loop: NO_REPLY detected, suppressing delivery",
 			"agent", l.id, "session", req.SessionKey)
 		finalContent = ""
 	}
 
-	// 5. Maybe summarize
+	// 9. Maybe summarize
 	l.maybeSummarize(ctx, req.SessionKey)
 
 	return &RunResult{

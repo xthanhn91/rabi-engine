@@ -160,6 +160,11 @@ func (c *Client) SendResponse(resp *protocol.ResponseFrame) {
 		slog.Error("marshal response failed", "error", err)
 		return
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Debug("client gone, dropping response", "client", c.id)
+		}
+	}()
 	select {
 	case c.send <- data:
 	default:
@@ -174,6 +179,11 @@ func (c *Client) SendEvent(event protocol.EventFrame) {
 		slog.Error("marshal event failed", "error", err)
 		return
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Debug("client gone, dropping event", "client", c.id)
+		}
+	}()
 	select {
 	case c.send <- data:
 	default:

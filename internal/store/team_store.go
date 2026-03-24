@@ -137,12 +137,13 @@ type TeamTaskData struct {
 
 // TeamTaskCommentData represents a comment on a team task.
 type TeamTaskCommentData struct {
-	ID        uuid.UUID  `json:"id"`
-	TaskID    uuid.UUID  `json:"task_id"`
-	AgentID   *uuid.UUID `json:"agent_id,omitempty"`
-	UserID    string     `json:"user_id,omitempty"`
-	Content   string     `json:"content"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID          uuid.UUID  `json:"id"`
+	TaskID      uuid.UUID  `json:"task_id"`
+	AgentID     *uuid.UUID `json:"agent_id,omitempty"`
+	UserID      string     `json:"user_id,omitempty"`
+	Content     string     `json:"content"`
+	CommentType string     `json:"comment_type,omitempty"` // "note" (default) or "blocker"
+	CreatedAt   time.Time  `json:"created_at"`
 
 	// Joined
 	AgentKey string `json:"agent_key,omitempty"`
@@ -323,6 +324,10 @@ type TeamStore interface {
 	ListRecoverableTasks(ctx context.Context, teamID uuid.UUID) ([]TeamTaskData, error)
 	// MarkAllStaleTasks sets pending tasks older than olderThan to stale status across all v2 active teams.
 	MarkAllStaleTasks(ctx context.Context, olderThan time.Time) ([]RecoveredTaskInfo, error)
+	// MarkInReviewStaleTasks sets in_review tasks older than olderThan to stale across all v2 active teams.
+	MarkInReviewStaleTasks(ctx context.Context, olderThan time.Time) ([]RecoveredTaskInfo, error)
+	// FixOrphanedBlockedTasks unblocks blocked tasks where all blockers reached terminal status.
+	FixOrphanedBlockedTasks(ctx context.Context) ([]RecoveredTaskInfo, error)
 	// ResetTaskStatus resets a stale or failed task back to pending for retry.
 	ResetTaskStatus(ctx context.Context, taskID, teamID uuid.UUID) error
 
