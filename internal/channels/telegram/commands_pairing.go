@@ -150,6 +150,7 @@ func DefaultMenuCommands() []telego.BotCommand {
 		{Command: "help", Description: "Show available commands"},
 		{Command: "stop", Description: "Stop current running task"},
 		{Command: "stopall", Description: "Stop all running tasks"},
+		{Command: "new", Description: "Start a fresh session"},
 		{Command: "reset", Description: "Reset conversation history"},
 		{Command: "status", Description: "Show bot status"},
 		{Command: "tasks", Description: "List team tasks"},

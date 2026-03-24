@@ -78,6 +78,7 @@ func (c *Channel) handleBotCommand(ctx context.Context, message *telego.Message,
 			"/help — Show this help message\n" +
 			"/stop — Stop current running task\n" +
 			"/stopall — Stop all running tasks\n" +
+			"/new — Start a fresh session (reset history)\n" +
 			"/reset — Reset conversation history\n" +
 			"/status — Show bot status\n" +
 			"/tasks — List team tasks\n" +
@@ -91,6 +92,9 @@ func (c *Channel) handleBotCommand(ctx context.Context, message *telego.Message,
 		c.bot.SendMessage(ctx, msg)
 		return true
 
+	case "/new":
+		// Alias for /reset — many users expect /new to start a fresh session.
+		fallthrough
 	case "/reset":
 		// In group chats, only file writers can reset conversation history.
 		if isGroup && c.configPermStore != nil {

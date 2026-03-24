@@ -23,12 +23,12 @@ func formatAgentError(err error) string {
 
 	// 2. Context overflow
 	if isContextOverflowError(lower) {
-		return "⚠️ Context overflow — message too large for this model. Try /new to start a fresh session."
+		return "⚠️ Context overflow — message too large for this model. Try /reset to start a fresh session."
 	}
 
 	// 3. Role ordering / message format errors (tool_use_id mismatch, roles must alternate, etc.)
 	if isMessageFormatError(lower) {
-		return "⚠️ Session history conflict — please try again. If this persists, use /new to start a fresh session."
+		return "⚠️ Session history conflict — please try again. If this persists, use /reset to start a fresh session."
 	}
 
 	// 4. Rate limit

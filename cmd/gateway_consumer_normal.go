@@ -15,6 +15,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/channels/telegram/voiceguard"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
+	"github.com/nextlevelbuilder/goclaw/internal/providers"
 	"github.com/nextlevelbuilder/goclaw/internal/scheduler"
 	"github.com/nextlevelbuilder/goclaw/internal/sessions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -373,10 +374,23 @@ func processNormalMessage(
 				return
 			}
 			slog.Error("inbound: agent run failed", "error", outcome.Err, "channel", channel)
+			errMsg := formatAgentError(outcome.Err)
+
+			// Auto-recover: if the error is a message format issue (corrupt session history),
+			// reset the session so the next message starts fresh instead of looping forever.
+			if isMessageFormatError(strings.ToLower(outcome.Err.Error())) {
+				slog.Warn("auto-recovery: resetting corrupt session", "session", session)
+				resetCtx := store.WithTenantID(context.Background(), msg.TenantID)
+				sessStore.Reset(resetCtx, session)
+				sessStore.Save(resetCtx, session)
+				providers.ResetCLISession("", session)
+				errMsg += "\n\nSession has been auto-reset. Please send your message again."
+			}
+
 			msgBus.PublishOutbound(bus.OutboundMessage{
 				Channel:  channel,
 				ChatID:   chatID,
-				Content:  formatAgentError(outcome.Err),
+				Content:  errMsg,
 				Metadata: meta,
 			})
 			return
