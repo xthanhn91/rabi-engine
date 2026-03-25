@@ -3,8 +3,10 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -13,12 +15,18 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/spf13/cobra"
 
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/upgrade"
 )
+
+// EmbeddedMigrationsFS holds the embedded migrations/*.sql files.
+// Set by main() before Execute(). When set, newMigrator() uses this
+// as a fallback when the filesystem migrations directory is not found.
+var EmbeddedMigrationsFS embed.FS
 
 var migrationsDir string
 
@@ -39,12 +47,40 @@ func resolveMigrationsDir() string {
 }
 
 func newMigrator(dsn string) (*migrate.Migrate, error) {
+	// Prefer filesystem directory (dev mode / explicit override).
 	dir := resolveMigrationsDir()
-	m, err := migrate.New("file://"+dir, dsn)
-	if err != nil {
-		return nil, fmt.Errorf("create migrator: %w", err)
+	if _, err := os.Stat(dir); err == nil {
+		m, err := migrate.New("file://"+dir, dsn)
+		if err != nil {
+			return nil, fmt.Errorf("create migrator (filesystem): %w", err)
+		}
+		slog.Debug("using filesystem migrations", "dir", dir)
+		return m, nil
 	}
-	return m, nil
+
+	// Fallback: use migrations embedded in the binary.
+	// EmbeddedMigrationsFS is set by main() from //go:embed migrations/*.sql.
+	var zero embed.FS
+	if EmbeddedMigrationsFS != zero {
+		// The embedded FS has files at "migrations/*.sql", so we sub into that dir.
+		subFS, err := fs.Sub(EmbeddedMigrationsFS, "migrations")
+		if err != nil {
+			return nil, fmt.Errorf("sub embedded migrations FS: %w", err)
+		}
+		source, err := iofs.New(subFS, ".")
+		if err != nil {
+			return nil, fmt.Errorf("create iofs source: %w", err)
+		}
+		m, err := migrate.NewWithSourceInstance("iofs", source, dsn)
+		if err != nil {
+			return nil, fmt.Errorf("create migrator (embedded): %w", err)
+		}
+		slog.Debug("using embedded migrations")
+		return m, nil
+	}
+
+	// Neither filesystem nor embedded available — return helpful error.
+	return nil, fmt.Errorf("migrations directory %q not found and no embedded migrations available", dir)
 }
 
 func resolveDSN() (string, error) {

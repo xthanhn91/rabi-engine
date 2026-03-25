@@ -2,16 +2,28 @@ VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
 LDFLAGS  = -s -w -X github.com/nextlevelbuilder/goclaw/cmd.Version=$(VERSION)
 BINARY   = goclaw
 
-.PHONY: build run clean version net up down logs reset test vet check-web dev migrate setup ci
+.PHONY: build build-dist build-cross run clean version net up down logs reset test vet check-web dev migrate setup ci
 
 build:
 	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o $(BINARY) .
+
+build-dist: check-web  ## Build single binary with embedded UI + migrations
+	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o $(BINARY) .
+
+build-cross: check-web  ## Cross-compile for all release targets
+	@mkdir -p dist
+	GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o dist/$(BINARY)-linux-amd64 .
+	GOOS=linux   GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o dist/$(BINARY)-linux-arm64 .
+	GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o dist/$(BINARY)-darwin-amd64 .
+	GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o dist/$(BINARY)-darwin-arm64 .
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o dist/$(BINARY)-windows-amd64.exe .
 
 run: build
 	./$(BINARY)
 
 clean:
 	rm -f $(BINARY)
+	rm -rf dist/
 
 version:
 	@echo $(VERSION)

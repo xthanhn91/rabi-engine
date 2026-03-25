@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -82,6 +83,8 @@ type Server struct {
 
 	logTee   *LogTee                  // optional; auto-unsubscribes clients on disconnect
 	postTurn tools.PostTurnProcessor // optional; for team task dispatch in HTTP API paths
+
+	dashboardFS fs.FS // embedded SPA assets (nil = not embedded)
 
 	httpServer *http.Server
 	mux        *http.ServeMux
@@ -339,6 +342,10 @@ func (s *Server) BuildMux() *http.ServeMux {
 			})
 		}
 	}
+
+	// SPA catch-all — MUST be last because "/" matches everything.
+	// Serves embedded dashboard UI with client-side routing fallback.
+	s.registerDashboardRoutes(mux)
 
 	s.mux = mux
 	return mux

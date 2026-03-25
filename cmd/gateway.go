@@ -798,6 +798,11 @@ func runGateway() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// License validation — checks key on startup, starts 24h phone-home.
+	// Skipped when GOCLAW_LICENSE_KEY is empty (self-hosted/dev mode).
+	cancelLicense := checkLicense(ctx)
+	defer cancelLicense()
+
 	server.StartUpdateChecker(ctx)
 
 	sigCh := make(chan os.Signal, 1)
@@ -1110,6 +1115,10 @@ func runGateway() {
 	if len(cfg.Gateway.AllowedOrigins) == 0 {
 		slog.Warn("security.cors_open: no allowed_origins configured — all WebSocket origins accepted. Set gateway.allowed_origins for production")
 	}
+
+	// Embedded dashboard UI — serves React SPA from the binary itself.
+	// Must be configured before Start() which calls BuildMux().
+	setupEmbeddedDashboard(server)
 
 	if err := server.Start(ctx); err != nil {
 		slog.Error("gateway error", "error", err)
