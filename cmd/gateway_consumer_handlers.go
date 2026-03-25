@@ -17,6 +17,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/channels"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
+	"github.com/nextlevelbuilder/goclaw/internal/safego"
 	"github.com/nextlevelbuilder/goclaw/internal/scheduler"
 	"github.com/nextlevelbuilder/goclaw/internal/sessions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -35,6 +36,7 @@ func handleSubagentAnnounce(
 	channelMgr *channels.Manager,
 	msgBus *bus.MessageBus,
 	getAnnounceMu func(string) *sync.Mutex,
+	bgWg *sync.WaitGroup,
 ) bool {
 	if !(msg.Channel == tools.ChannelSystem && strings.HasPrefix(msg.SenderID, "subagent:")) {
 		return false
@@ -68,7 +70,7 @@ func handleSubagentAnnounce(
 	sessionKey := msg.Metadata["origin_session_key"]
 	if sessionKey == "" {
 		// Fallback: rebuild session key from origin metadata (works for Telegram, Discord, etc.)
-		sessionKey = sessions.BuildScopedSessionKey(parentAgent, origChannel, sessions.PeerKind(origPeerKind), msg.ChatID, cfg.Sessions.Scope, cfg.Sessions.DmScope, cfg.Sessions.MainKey)
+		sessionKey = sessions.BuildScopedSessionKey(parentAgent, origChannel, sessions.PeerKind(origPeerKind), msg.ChatID)
 		sessionKey = overrideSessionKeyFromLocalKey(sessionKey, origLocalKey, parentAgent, origChannel, msg.ChatID, origPeerKind)
 	}
 
@@ -128,7 +130,10 @@ func handleSubagentAnnounce(
 	// Handle announce asynchronously with per-session serialization.
 	// The mutex ensures concurrent announces for the same session wait for
 	// each other, so each reads up-to-date session history.
+	bgWg.Add(1)
 	go func(sessionKey, origCh, chatID, senderID, label string, meta map[string]string, req agent.RunRequest) {
+		defer bgWg.Done()
+		defer safego.Recover(nil, "component", "subagent_announce", "session", sessionKey)
 		mu := getAnnounceMu(sessionKey)
 		mu.Lock()
 		defer mu.Unlock()
@@ -193,6 +198,7 @@ func handleTeammateMessage(
 	msgBus *bus.MessageBus,
 	postTurn tools.PostTurnProcessor,
 	taskRunSessions *sync.Map,
+	bgWg *sync.WaitGroup,
 ) bool {
 	if !(msg.Channel == tools.ChannelSystem && strings.HasPrefix(msg.SenderID, "teammate:")) {
 		return false
@@ -286,7 +292,10 @@ func handleTeammateMessage(
 		LinkedTraceID:   linkedTraceID,
 	})
 
+	bgWg.Add(1)
 	go func(origCh, origChatID, senderID, taskID string, meta, inMeta map[string]string) {
+		defer bgWg.Done()
+		defer safego.Recover(nil, "component", "teammate_message", "task_id", taskID)
 		// Lock renewal heartbeat: extend task lock every 10 min to prevent
 		// the ticker from recovering long-running tasks as stale.
 		var lockStop chan struct{}
@@ -528,7 +537,7 @@ func handleTeammateMessage(
 		leadSessionKey := inMeta["origin_session_key"]
 		if leadSessionKey == "" {
 			// Fallback: rebuild session key from origin metadata (works for Telegram, Discord, etc.)
-			leadSessionKey = sessions.BuildScopedSessionKey(leadAgent, origCh, sessions.PeerKind(origPeerKind), origChatID, cfg.Sessions.Scope, cfg.Sessions.DmScope, cfg.Sessions.MainKey)
+			leadSessionKey = sessions.BuildScopedSessionKey(leadAgent, origCh, sessions.PeerKind(origPeerKind), origChatID)
 			leadSessionKey = overrideSessionKeyFromLocalKey(leadSessionKey, origLocalKey, leadAgent, origCh, origChatID, origPeerKind)
 		}
 
@@ -600,7 +609,7 @@ func handleResetCommand(
 	if peerKind == "" {
 		peerKind = string(sessions.PeerDirect)
 	}
-	sessionKey := sessions.BuildScopedSessionKey(agentID, msg.Channel, sessions.PeerKind(peerKind), msg.ChatID, cfg.Sessions.Scope, cfg.Sessions.DmScope, cfg.Sessions.MainKey)
+	sessionKey := sessions.BuildScopedSessionKey(agentID, msg.Channel, sessions.PeerKind(peerKind), msg.ChatID)
 	if msg.Metadata["is_forum"] == "true" && peerKind == string(sessions.PeerGroup) {
 		var topicID int
 		fmt.Sscanf(msg.Metadata["message_thread_id"], "%d", &topicID)
@@ -639,7 +648,7 @@ func handleStopCommand(
 	if peerKind == "" {
 		peerKind = string(sessions.PeerDirect)
 	}
-	sessionKey := sessions.BuildScopedSessionKey(agentID, msg.Channel, sessions.PeerKind(peerKind), msg.ChatID, cfg.Sessions.Scope, cfg.Sessions.DmScope, cfg.Sessions.MainKey)
+	sessionKey := sessions.BuildScopedSessionKey(agentID, msg.Channel, sessions.PeerKind(peerKind), msg.ChatID)
 	if msg.Metadata["is_forum"] == "true" && peerKind == string(sessions.PeerGroup) {
 		var topicID int
 		fmt.Sscanf(msg.Metadata["message_thread_id"], "%d", &topicID)
